@@ -1,20 +1,37 @@
 package com.example.musicplayer
 
-import android.media.MediaPlayer
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.musicplayer.data.Song
 import com.example.musicplayer.data.SongSource
 
+
 class MainActivity : AppCompatActivity() {
 
-    var mMediaPlayer: MediaPlayer? = null
-    var currentSong = SongSource.collection.first()
-    var isPlaying = false
-    var songPosition = 0
+    private lateinit var mService: MusicService
+    private var mBound: Boolean = false
+
+    private val connection = object : ServiceConnection {
+
+        override fun onServiceConnected(className: ComponentName, service: IBinder) {
+            val binder = service as MusicService.LocalBinder
+            mService = binder.getService()
+            mBound = true
+        }
+
+        override fun onServiceDisconnected(arg0: ComponentName) {
+            mBound = false
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,51 +44,48 @@ class MainActivity : AppCompatActivity() {
         bPrev.isEnabled = false
 
         bPrev.setOnClickListener {
-            stopSong()
-
-            bNext.isEnabled = true
-            bNext.alpha = 1.0F
-
-            currentSong = SongSource.collection[SongSource.collection.indexOf(currentSong) - 1]
-            refreshSong(currentSong)
-            bPlay.callOnClick()
-
-            if(SongSource.collection.indexOf(currentSong) == 0) {
-                bPrev.isEnabled = false
-                bPrev.alpha = 0.5F
-            }
-        }
-
-        bPlay.setOnClickListener {
-            isPlaying = if (mMediaPlayer?.isPlaying == true) {
-                mMediaPlayer?.pause()
-                bPlay.setImageResource(R.drawable.play_72)
-                false
-            } else {
-                playSong()
+            if (mBound) {
+                mService.prevSong()
+                refreshDisplayForSong(mService.getCurrentSong())
                 bPlay.setImageResource(R.drawable.pause_72)
-                true
             }
+            else Toast.makeText(this, "No service found.", Toast.LENGTH_SHORT).show()
         }
-
-        bNext.setOnClickListener {
-            stopSong()
-
-            bPrev.isEnabled = true
-            bPrev.alpha = 1.0F
-
-            currentSong = SongSource.collection[SongSource.collection.indexOf(currentSong) + 1]
-            refreshSong(currentSong)
-            bPlay.callOnClick()
-
-            if(SongSource.collection.indexOf(currentSong) == SongSource.collection.lastIndex) {
-                bNext.isEnabled = false
-                bNext.alpha = 0.5F
+        bPlay.setOnClickListener {
+            if (mBound) {
+                mService.playSong()
+                refreshDisplayForSong(mService.getCurrentSong())
+                if(mService.isPlaying()) bPlay.setImageResource(R.drawable.pause_72)
+                else bPlay.setImageResource(R.drawable.play_72)
             }
+            else Toast.makeText(this, "No service found.", Toast.LENGTH_SHORT).show()
+        }
+        bNext.setOnClickListener {
+            if (mBound) {
+                mService.nextSong()
+                refreshDisplayForSong(mService.getCurrentSong())
+                bPlay.setImageResource(R.drawable.pause_72)
+            }
+            else Toast.makeText(this, "No service found.", Toast.LENGTH_SHORT).show()
         }
     }
 
-    fun refreshSong(currentSong: Song) {
+    override fun onStart() {
+        super.onStart()
+        Intent(this, MusicService::class.java).also { intent ->
+            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if(isFinishing) {
+            unbindService(connection)
+            mBound = false
+        }
+    }
+
+    fun refreshDisplayForSong(currentSong: Song) {
         val image = findViewById<ImageView>(R.id.image)
         val songName = findViewById<TextView>(R.id.songName)
         val authorName = findViewById<TextView>(R.id.authorName)
@@ -81,52 +95,8 @@ class MainActivity : AppCompatActivity() {
         songName.text = currentSong.name
         authorName.text = currentSong.author
         songNumber.text = "${SongSource.collection.indexOf(currentSong) + 1}/5"
-    }
-
-    fun playSong() {
-        if (mMediaPlayer == null) {
-            mMediaPlayer = MediaPlayer.create(this, currentSong.song)
-            mMediaPlayer!!.isLooping = true
-            mMediaPlayer!!.start()
-        } else mMediaPlayer!!.start()
-    }
-
-    fun stopSong() {
-        if (mMediaPlayer != null) {
-            mMediaPlayer!!.stop()
-            mMediaPlayer!!.release()
-            mMediaPlayer = null
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        if (mMediaPlayer != null) {
-            songPosition = mMediaPlayer!!.currentPosition
-            mMediaPlayer!!.release()
-            mMediaPlayer = null
-        }
-    }
-
-    override fun onSaveInstanceState(savedInstanceState: Bundle) {
-        super.onSaveInstanceState(savedInstanceState)
-
-        savedInstanceState.putInt("indexOfCurrentSong", SongSource.collection.indexOf(currentSong))
-        savedInstanceState.putBoolean("isPlaying", isPlaying)
-        savedInstanceState.putInt("songPosition", songPosition)
-    }
-
-    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
-        super.onRestoreInstanceState(savedInstanceState)
-
-        currentSong = SongSource.collection[savedInstanceState.getInt("indexOfCurrentSong")]
-        isPlaying = savedInstanceState.getBoolean("isPlaying")
-        songPosition = savedInstanceState.getInt("songPosition")
-
-        refreshSong(currentSong)
 
         val bPrev = findViewById<ImageButton>(R.id.prev_button)
-        val bPlay = findViewById<ImageButton>(R.id.play_button)
         val bNext = findViewById<ImageButton>(R.id.next_button)
 
         if(SongSource.collection.indexOf(currentSong) == 0) {
@@ -134,7 +104,7 @@ class MainActivity : AppCompatActivity() {
             bPrev.alpha = 0.5F
         } else {
             bPrev.isEnabled = true
-            bPrev.alpha = 1F
+            bPrev.alpha = 1.0F
         }
 
         if(SongSource.collection.indexOf(currentSong) == SongSource.collection.lastIndex) {
@@ -142,19 +112,24 @@ class MainActivity : AppCompatActivity() {
             bNext.alpha = 0.5F
         } else {
             bNext.isEnabled = true
-            bNext.alpha = 1F
+            bNext.alpha = 1.0F
         }
+    }
 
-        if(isPlaying) {
-            mMediaPlayer = MediaPlayer.create(this, currentSong.song)
-            mMediaPlayer!!.isLooping = true
-            mMediaPlayer!!.seekTo(songPosition)
-            mMediaPlayer!!.start()
-            bPlay.setImageResource(R.drawable.pause_72)
-        } else {
-                mMediaPlayer = MediaPlayer.create(this, currentSong.song)
-                mMediaPlayer!!.isLooping = true
-                mMediaPlayer!!.seekTo(songPosition)
-        }
+    override fun onSaveInstanceState(savedInstanceState: Bundle) {
+        super.onSaveInstanceState(savedInstanceState)
+
+        savedInstanceState.putInt("indexOfSong", SongSource.collection.indexOf(mService.getCurrentSong()))
+        savedInstanceState.putBoolean("isPlaying", mService.isPlaying())
+    }
+
+    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        super.onRestoreInstanceState(savedInstanceState)
+
+        refreshDisplayForSong(SongSource.collection[savedInstanceState.getInt("indexOfSong")])
+
+        val bPlay = findViewById<ImageButton>(R.id.play_button)
+        if(savedInstanceState.getBoolean("isPlaying")) bPlay.setImageResource(R.drawable.pause_72)
+        else bPlay.setImageResource(R.drawable.play_72)
     }
 }
