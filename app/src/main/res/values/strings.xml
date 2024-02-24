@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Music Player</string>
+    <string name="first_song_name">Smells Like Teen Spirit</string>
+    <string name="first_author_name">Nirvana</string>
 </resources>
