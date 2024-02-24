@@ -1,16 +1,21 @@
 package com.example.musicplayer
 
+import android.app.NotificationManager
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.musicplayer.MusicPlayerApp.Companion.isReceiverRegistered
+import com.example.musicplayer.MusicServiceNotification.Companion.Actions
 import com.example.musicplayer.data.Song
 import com.example.musicplayer.data.SongSource
 
@@ -33,9 +38,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.extras!!.getString("actionName")) {
+                Actions.PLAY.toString() -> findViewById<ImageButton>(R.id.play_button).callOnClick()
+                Actions.NEXT.toString() -> findViewById<ImageButton>(R.id.next_button).callOnClick()
+                Actions.PREV.toString() -> findViewById<ImageButton>(R.id.prev_button).callOnClick()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        if(!isReceiverRegistered) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                registerReceiver(broadcastReceiver, IntentFilter("Actions"), RECEIVER_EXPORTED)
+            else registerReceiver(broadcastReceiver, IntentFilter("Actions"))
+            isReceiverRegistered = true
+        }
 
         val bPrev = findViewById<ImageButton>(R.id.prev_button)
         val bPlay = findViewById<ImageButton>(R.id.play_button)
@@ -49,7 +71,6 @@ class MainActivity : AppCompatActivity() {
                 refreshDisplayForSong(mService.getCurrentSong())
                 bPlay.setImageResource(R.drawable.pause_72)
             }
-            else Toast.makeText(this, "No service found.", Toast.LENGTH_SHORT).show()
         }
         bPlay.setOnClickListener {
             if (mBound) {
@@ -58,7 +79,6 @@ class MainActivity : AppCompatActivity() {
                 if(mService.isPlaying()) bPlay.setImageResource(R.drawable.pause_72)
                 else bPlay.setImageResource(R.drawable.play_72)
             }
-            else Toast.makeText(this, "No service found.", Toast.LENGTH_SHORT).show()
         }
         bNext.setOnClickListener {
             if (mBound) {
@@ -66,7 +86,6 @@ class MainActivity : AppCompatActivity() {
                 refreshDisplayForSong(mService.getCurrentSong())
                 bPlay.setImageResource(R.drawable.pause_72)
             }
-            else Toast.makeText(this, "No service found.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -79,22 +98,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        if(isFinishing) {
-            unbindService(connection)
-            mBound = false
+        if(isFinishing || isChangingConfigurations) {
+            unregisterReceiver(broadcastReceiver)
+            isReceiverRegistered = false
         }
     }
 
-    fun refreshDisplayForSong(currentSong: Song) {
-        val image = findViewById<ImageView>(R.id.image)
-        val songName = findViewById<TextView>(R.id.songName)
-        val authorName = findViewById<TextView>(R.id.authorName)
-        val songNumber = findViewById<TextView>(R.id.song_number)
-
-        image.setImageResource(currentSong.image)
-        songName.text = currentSong.name
-        authorName.text = currentSong.author
-        songNumber.text = "${SongSource.collection.indexOf(currentSong) + 1}/5"
+    private fun refreshDisplayForSong(currentSong: Song) {
+        findViewById<ImageView>(R.id.image).setImageResource(currentSong.image)
+        findViewById<TextView>(R.id.songName).text = currentSong.name
+        findViewById<TextView>(R.id.authorName).text = currentSong.author
+        findViewById<TextView>(R.id.song_number).text = "${SongSource.collection.indexOf(currentSong) + 1}/5"
 
         val bPrev = findViewById<ImageButton>(R.id.prev_button)
         val bNext = findViewById<ImageButton>(R.id.next_button)
@@ -116,6 +130,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        if(isFinishing) {
+            (this.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancelAll()
+            unbindService(connection)
+        }
+    }
+
     override fun onSaveInstanceState(savedInstanceState: Bundle) {
         super.onSaveInstanceState(savedInstanceState)
 
@@ -126,10 +148,10 @@ class MainActivity : AppCompatActivity() {
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
 
-        refreshDisplayForSong(SongSource.collection[savedInstanceState.getInt("indexOfSong")])
+        if(mBound) refreshDisplayForSong(mService.getCurrentSong())
+        else refreshDisplayForSong(SongSource.collection[savedInstanceState.getInt("indexOfSong")])
 
-        val bPlay = findViewById<ImageButton>(R.id.play_button)
-        if(savedInstanceState.getBoolean("isPlaying")) bPlay.setImageResource(R.drawable.pause_72)
-        else bPlay.setImageResource(R.drawable.play_72)
+        if(savedInstanceState.getBoolean("isPlaying")) findViewById<ImageButton>(R.id.play_button).setImageResource(R.drawable.pause_72)
+        else findViewById<ImageButton>(R.id.play_button).setImageResource(R.drawable.play_72)
     }
 }

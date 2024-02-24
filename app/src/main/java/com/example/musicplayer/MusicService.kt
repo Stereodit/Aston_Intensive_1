@@ -8,9 +8,11 @@ import android.os.IBinder
 import com.example.musicplayer.data.Song
 import com.example.musicplayer.data.SongSource
 
-class MusicService : Service() {
+
+class MusicService: Service() {
     private var mMediaPlayer: MediaPlayer? = null
     private var currentSong = SongSource.collection.first()
+    private lateinit var musicServiceNotification: MusicServiceNotification
 
     private val binder = LocalBinder()
     inner class LocalBinder : Binder() {
@@ -19,6 +21,12 @@ class MusicService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? {
         return binder
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        musicServiceNotification = MusicServiceNotification(this)
+        musicServiceNotification.showNotification(currentSong, isPlaying())
     }
 
     fun getCurrentSong(): Song {
@@ -31,16 +39,16 @@ class MusicService : Service() {
 
     fun nextSong() {
         if(SongSource.collection.indexOf(currentSong) != SongSource.collection.lastIndex) {
-            currentSong = SongSource.collection[SongSource.collection.indexOf(currentSong) + 1]
             stopSong()
+            currentSong = SongSource.collection[SongSource.collection.indexOf(currentSong) + 1]
             playSong()
         }
     }
 
     fun prevSong() {
         if(SongSource.collection.indexOf(currentSong) != 0) {
-            currentSong = SongSource.collection[SongSource.collection.indexOf(currentSong) - 1]
             stopSong()
+            currentSong = SongSource.collection[SongSource.collection.indexOf(currentSong) - 1]
             playSong()
         }
     }
@@ -48,6 +56,7 @@ class MusicService : Service() {
     fun playSong() {
         if (mMediaPlayer != null && mMediaPlayer!!.isPlaying) {
             mMediaPlayer!!.pause()
+            musicServiceNotification.showNotification(currentSong, isPlaying())
             return
         }
         if (mMediaPlayer == null) {
@@ -55,6 +64,7 @@ class MusicService : Service() {
             mMediaPlayer!!.isLooping = true
             mMediaPlayer!!.start()
         } else mMediaPlayer!!.start()
+        musicServiceNotification.showNotification(currentSong, isPlaying())
     }
 
     fun stopSong() {

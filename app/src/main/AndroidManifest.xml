@@ -3,7 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".MusicPlayerApp"
         android:allowBackup="true"
@@ -29,5 +30,6 @@
             android:foregroundServiceType="mediaPlayback"
             android:exported="false">
         </service>
+        <receiver android:name=".MusicPlayerReceiver" />
     </application>
 </manifest>
